@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../sms.dart';
+import '../model_config.dart';
+import 'stats_page.dart';
 
 const Color _bg = Color(0xFFF5F5F7);
 const Color _card = Color(0xFFFFFFFF);
@@ -29,6 +31,9 @@ class _ClassificationScreenState extends State<ClassificationScreen> {
   String _filter = 'All';
   String _query = '';
   final _searchCtrl = TextEditingController();
+  final _smsCountCtrl = TextEditingController(text: '20');
+  ModelConfig _selectedModel = AvailableModels.defaultModel;
+  BenchmarkResult? _lastResult;
 
   @override
   void initState() {
@@ -39,6 +44,7 @@ class _ClassificationScreenState extends State<ClassificationScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _smsCountCtrl.dispose();
     super.dispose();
   }
 
@@ -57,7 +63,18 @@ class _ClassificationScreenState extends State<ClassificationScreen> {
       return;
     }
 
-    final messages = await SmsService.getNSms(20);
+    final smsCount = int.tryParse(_smsCountCtrl.text) ?? 20;
+    final stopwatch = Stopwatch()..start();
+          
+    final messages = await SmsService.getNSms(
+      smsCount,
+      modelConfig: _selectedModel,
+    );
+    
+    stopwatch.stop();
+    _lastResult = SmsService.getBenchmarkResult(messages, _selectedModel, stopwatch.elapsed);
+    BenchmarkHistory.addResult(_lastResult!);
+
     setState(() {
       _all = messages;
       _loading = false;
@@ -82,6 +99,137 @@ class _ClassificationScreenState extends State<ClassificationScreen> {
     setState(() => _filtered = result);
   }
 
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Settings',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: _textPrimary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Number of SMS to process',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _smsCountCtrl,
+              keyboardType: TextInputType.number,
+              style: GoogleFonts.inter(fontSize: 14, color: _textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Enter number of SMS',
+                filled: true,
+                fillColor: _surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _border),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Model',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _border),
+              ),
+              child: Column(
+                children: AvailableModels.models.map((model) {
+                  final isSelected = _selectedModel.id == model.id;
+                  return ListTile(
+                    title: Text(
+                      model.name,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: _textPrimary,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? Icon(Icons.check_circle, color: _accent, size: 20)
+                        : null,
+                    onTap: () {
+                      setState(() => _selectedModel = model);
+                      Navigator.pop(context);
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _loadSms();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _accent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Apply & Run',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -94,6 +242,23 @@ class _ClassificationScreenState extends State<ClassificationScreen> {
           style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _showSettings,
+            tooltip: 'Settings',
+          ),
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StatsPage(result: _lastResult),
+                ),
+              );
+            },
+            tooltip: 'View Stats',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadSms,

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_sms_inbox/flutter_sms_inbox.dart';
 import 'dart:math';
+import 'model_config.dart';
 
 class SmsClassification {
   final bool isSpam;
@@ -19,6 +20,8 @@ class ProcessedSms {
   final DateTime date;
   final bool isSpam;
   final double confidence;
+  final int messageLength;
+  final Duration processingTime;
 
   ProcessedSms({
     required this.sender,
@@ -26,12 +29,13 @@ class ProcessedSms {
     required this.date,
     required this.isSpam,
     required this.confidence,
+    required this.messageLength,
+    required this.processingTime,
   });
 }
 
 class SmsService {
   static final SmsQuery _query = SmsQuery();
-
 
   static Future<bool> requestPermission() async {
     final status = await Permission.sms.request();
@@ -42,23 +46,24 @@ class SmsService {
 
   static Future<void> openSettings() async => await openAppSettings();
 
-
-  static Future<List<ProcessedSms>> getNSms(int numSms) async {
+  static Future<List<ProcessedSms>> getNSms(
+    int numSms, {
+    ModelConfig? modelConfig,
+  }) async {
+    final config = modelConfig ?? AvailableModels.defaultModel;
     print("!! Initializing Tokenizer & Model Session...\n");
-    final tokenizerPath = "assets/model/tokenizer.json";
-    final modelPath = "assets/model/model.onnx";
+    print("!! Using model: ${config.name}\n");
 
-    final tokenizer = await HfTokenizer.fromAsset(tokenizerPath);
-
+    final tokenizer = await HfTokenizer.fromAsset(config.tokenizerPath);
 
     final ort = OnnxRuntime();
-    final session = await ort.createSessionFromAsset(modelPath);
+    final session = await ort.createSessionFromAsset(config.modelPath);
     print("!! Tokenizer & Model Session Initialized\n");
     print("!! Fetching All Messages !!\n");
     try {
       final messages = await _query.querySms(
         kinds: [SmsQueryKind.inbox],
-        count: numSms, 
+        count: numSms,
       );
 
       print("Got all Messages\n");
@@ -69,12 +74,14 @@ class SmsService {
           final date = sms.date ?? DateTime.now();
           print("\tProccessing Messages:\n\t\t$body\n");
 
+          final stopwatch = Stopwatch()..start();
           final classification = await _classify(
             body,
             sender,
             tokenizer,
             session,
           );
+          stopwatch.stop();
 
           return ProcessedSms(
             sender: sender,
@@ -82,6 +89,8 @@ class SmsService {
             date: date,
             isSpam: classification.isSpam,
             confidence: classification.confidence,
+            messageLength: body.length,
+            processingTime: stopwatch.elapsed,
           );
         }),
       );
@@ -159,5 +168,62 @@ class SmsService {
       'spam': spam,
       'ham': messages.length - spam,
     };
+  }
+
+  static BenchmarkResult getBenchmarkResult(
+    List<ProcessedSms> messages,
+    ModelConfig modelConfig,
+    Duration totalTime
+  ) {
+    if (messages.isEmpty) {
+      return BenchmarkResult(
+        modelId: modelConfig.id,
+        modelName: modelConfig.name,
+        totalSms: 0,
+        totalTime: Duration.zero,
+        avgTime: Duration.zero,
+        minTime: Duration.zero,
+        maxTime: Duration.zero,
+        maxMsgLength: 0,
+        minMsgLength: 0,
+        avgMsgLength: 0,
+        spamCount: 0,
+        hamCount: 0,
+        timestamp: DateTime.now(),
+      );
+    }
+
+    final msgLengths = messages.map((m) => m.messageLength).toList();
+    final processingTimes = messages
+        .map((m) => m.processingTime.inMilliseconds)
+        .toList();
+    final spamCount = messages.where((m) => m.isSpam).length;
+
+    return BenchmarkResult(
+      modelId: modelConfig.id,
+      modelName: modelConfig.name,
+      totalSms: messages.length,
+      totalTime: totalTime,
+      avgTime: Duration(
+        milliseconds:
+            messages.fold(
+              0,
+              (sum, m) => sum + m.processingTime.inMilliseconds,
+            ) ~/
+            messages.length,
+      ),
+      minTime: Duration(
+        milliseconds: processingTimes.reduce((a, b) => a < b ? a : b),
+      ),
+      maxTime: Duration(
+        milliseconds: processingTimes.reduce((a, b) => a > b ? a : b),
+      ),
+      maxMsgLength: msgLengths.reduce((a, b) => a > b ? a : b),
+      minMsgLength: msgLengths.reduce((a, b) => a < b ? a : b),
+      avgMsgLength: msgLengths.reduce((a, b) => a + b) / messages.length,
+      spamCount: spamCount,
+      hamCount: messages.length - spamCount,
+      timestamp: DateTime.now(),
+    );
   }
 }
