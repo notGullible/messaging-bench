@@ -15,11 +15,10 @@ class ModelConfig {
 class AvailableModels {
   static const List<ModelConfig> models = [
     ModelConfig(
-      id: 'onnx-adaptruncate',
-      name: 'ONNX Adaptive Truncate',
+      id: 'onnx-adaptruncate_270326-2002',
+      name: 'Onnx-Adaptruncate 270326-2002',
       modelPath: 'assets/models/onnx-adaptruncate_270326-2002/model.onnx',
-      tokenizerPath:
-          'assets/models/onnx-adaptruncate_270326-2002/tokenizer.json',
+      tokenizerPath: 'assets/models/onnx-adaptruncate_270326-2002/tokenizer.json',
     ),
   ];
 

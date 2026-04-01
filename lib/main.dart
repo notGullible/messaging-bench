@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ng_messaging_bench/pages/sms_page.dart';
+import 'package:ng_messaging_bench/pages/config_run_page.dart';
 import 'package:flutter_embedder/flutter_embedder.dart';
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,18 +9,10 @@ Future<void> main() async {
 }
 
 class MainApp extends StatelessWidget {
-  
-
   const MainApp({super.key});
 
   @override
-  Widget build(BuildContext context) {    
-    return const MaterialApp(
-      title: 'messaging_bench',
-      home: ClassificationScreen(),
-    );
+  Widget build(BuildContext context) {
+    return const MaterialApp(title: 'messaging_bench', home: ConfigRunPage());
   }
 }
-
-
-
